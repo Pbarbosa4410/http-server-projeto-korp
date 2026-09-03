@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Validar dependências
+        run: go mod tidy
+
+      - name: Verificar formatação
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: Executar testes
+        run: go test ./...
+
+      - name: Compilar aplicação
+        run: go build ./cmd/server
+
+      - name: Validar Docker Compose
+        run: docker compose config
+
+      - name: Build da imagem Docker
+        run: docker build -t http-server-projeto-korp:test .
