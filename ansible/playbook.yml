@@ -1,19 +1,24 @@
 ---
-- name: Provisionar ambiente do HTTP Server Korp
+- name: Provisionar ambiente completo do HTTP Server Projeto Korp
   hosts: localhost
-  become: true
   connection: local
+  become: true
+
+  vars:
+    project_dir: "{{ playbook_dir | dirname }}"
+    docker_network: "korp-network"
+    service_url: "http://localhost:80/projeto-korp"
 
   tasks:
-    - name: Atualizar cache do apt
+    - name: Atualizar cache do APT
       apt:
         update_cache: true
+        cache_valid_time: 3600
 
     - name: Instalar Docker
       apt:
         name:
           - docker.io
-          - docker-compose-v2
         state: present
 
     - name: Garantir que o Docker esteja iniciado
@@ -22,8 +27,113 @@
         state: started
         enabled: true
 
-    - name: Adicionar usuário atual ao grupo docker
-      user:
-        name: "{{ ansible_user_id }}"
-        groups: docker
-        append: true
+    - name: Verificar disponibilidade do Docker Compose
+      command: docker compose version
+      register: docker_compose_version
+      changed_when: false
+
+    - name: Exibir versão do Docker Compose
+      debug:
+        msg: "{{ docker_compose_version.stdout }}"
+
+    - name: Verificar se a rede Docker já existe
+      command: docker network inspect {{ docker_network }}
+      register: docker_network_check
+      changed_when: false
+      failed_when: false
+
+    - name: Criar rede Docker bridge
+      command: docker network create --driver bridge {{ docker_network }}
+      when: docker_network_check.rc != 0
+
+    - name: Validar configuração do Docker Compose
+      command: docker compose config
+      args:
+        chdir: "{{ project_dir }}"
+      changed_when: false
+
+    - name: Realizar build da imagem da aplicação
+      command: docker compose build app
+      args:
+        chdir: "{{ project_dir }}"
+      register: docker_build
+      changed_when: true
+
+    - name: Subir aplicação e componentes de infraestrutura
+      command: docker compose up -d
+      args:
+        chdir: "{{ project_dir }}"
+      register: compose_up
+      changed_when: true
+
+    - name: Aguardar NGINX disponibilizar o serviço
+      uri:
+        url: "{{ service_url }}"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: service_validation
+      retries: 15
+      delay: 2
+      until: service_validation.status == 200
+
+    - name: Exibir resposta do serviço no console
+      debug:
+        var: service_validation.json
+
+    - name: Validar endpoint de health check
+      uri:
+        url: "http://localhost:80/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: health_validation
+
+    - name: Exibir resposta do health check
+      debug:
+        msg: "{{ health_validation.content | trim }}"
+
+    - name: Validar Prometheus
+      uri:
+        url: "http://localhost:9090/-/ready"
+        method: GET
+        status_code: 200
+      register: prometheus_validation
+      retries: 10
+      delay: 2
+      until: prometheus_validation.status == 200
+
+    - name: Validar Grafana
+      uri:
+        url: "http://localhost:3000/api/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: grafana_validation
+      retries: 10
+      delay: 2
+      until: grafana_validation.status == 200
+
+    - name: Exibir status do Grafana
+      debug:
+        var: grafana_validation.json
+
+    - name: Listar containers em execução
+      command: docker compose ps
+      args:
+        chdir: "{{ project_dir }}"
+      register: containers_status
+      changed_when: false
+
+    - name: Exibir containers em execução
+      debug:
+        msg: "{{ containers_status.stdout_lines }}"
+
+    - name: Provisionamento concluído
+      debug:
+        msg:
+          - "Ambiente provisionado com sucesso."
+          - "Aplicação: http://localhost:80/projeto-korp"
+          - "Health Check: http://localhost:80/health"
+          - "Prometheus: http://localhost:9090"
+          - "Grafana: http://localhost:3000"

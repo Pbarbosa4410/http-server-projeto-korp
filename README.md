@@ -4,7 +4,9 @@
 
 Projeto DevOps desenvolvido como desafio técnico utilizando Go, Docker, Docker Compose, Nginx, Prometheus, Grafana, Ansible e GitHub Actions.
 
-O objetivo é disponibilizar uma aplicação HTTP simples, containerizada e observável, com proxy reverso, coleta de métricas, dashboard de monitoramento, automação de provisionamento e pipeline de integração contínua.
+O objetivo é disponibilizar uma aplicação HTTP simples, containerizada, observável e automatizada, com proxy reverso, coleta de métricas, dashboard de monitoramento, provisionamento com Ansible e pipeline de integração contínua.
+
+---
 
 ## Arquitetura
 
@@ -24,10 +26,12 @@ Fluxo simplificado:
 Cliente
    |
    v
-Nginx
+Nginx :80
    |
    v
-Aplicação Go
+Aplicação Go :8080
+   |
+   +------> /projeto-korp
    |
    +------> /health
    |
@@ -39,6 +43,8 @@ Aplicação Go
                v
             Grafana
 ```
+
+---
 
 ## Tecnologias
 
@@ -54,20 +60,26 @@ Aplicação Go
 - GitHub Actions
 - Make
 
+---
+
 ## Funcionalidades
 
 - Servidor HTTP desenvolvido em Go
-- Endpoint principal da aplicação
+- Endpoint obrigatório `GET /projeto-korp`
+- Resposta JSON com nome do projeto e horário UTC
 - Health Check
-- Endpoint de métricas compatível com Prometheus
+- Métricas no padrão Prometheus
 - Proxy reverso com Nginx
+- Rede Docker bridge dedicada
 - Monitoramento com Prometheus
 - Dashboard com Grafana
 - Provisionamento automatizado com Ansible
 - Execução dos serviços com Docker Compose
 - Pipeline de integração contínua com GitHub Actions
-- Testes automatizados dos endpoints
+- Testes automatizados
 - Automação de comandos com Makefile
+
+---
 
 ## Estrutura do Projeto
 
@@ -103,7 +115,7 @@ http-server-projeto-korp/
 │       └── prometheus.yml
 ├── nginx/
 │   └── conf.d/
-│       └── default.conf
+│       └── http-server-projeto-korp.conf
 ├── .gitignore
 ├── Dockerfile
 ├── docker-compose.yml
@@ -113,89 +125,72 @@ http-server-projeto-korp/
 └── README.md
 ```
 
-## Executando o Projeto
+---
 
-### Subir todos os serviços
+## Serviço HTTP
 
-```bash
-sudo docker compose up --build
-```
-
-Esse comando executa os containers mostrando os logs diretamente no terminal.
-
-### Executar em segundo plano
-
-```bash
-sudo docker compose up -d --build
-```
-
-A opção `-d` executa os containers em segundo plano e libera o terminal para outros comandos.
-
-### Verificar os containers
-
-```bash
-sudo docker compose ps
-```
-
-### Visualizar logs
-
-```bash
-sudo docker compose logs -f
-```
-
-Para sair dos logs sem parar os containers:
-
-```text
-Ctrl + C
-```
-
-### Parar os serviços
-
-```bash
-sudo docker compose down
-```
-
-## Serviços e Endpoints
-
-| Serviço | URL |
-|---|---|
-| Aplicação | http://localhost |
-| Health Check | http://localhost/health |
-| Métricas | http://localhost/metrics |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
-
-## Aplicação
-
-A aplicação HTTP é desenvolvida em Go e executa internamente na porta:
+A aplicação é executada internamente na porta:
 
 ```text
 8080
 ```
 
-O acesso externo é realizado através do Nginx na porta:
+O serviço não publica diretamente essa porta no host.
+
+O acesso externo ocorre através do Nginx na porta:
 
 ```text
 80
 ```
 
-### Endpoint principal
+---
+
+## Endpoint obrigatório
+
+O desafio exige o endpoint:
 
 ```text
-http://localhost
+GET /projeto-korp
 ```
 
-Resposta esperada:
+Acesso:
 
 ```text
-HTTP Server Projeto Korp funcionando!
+http://localhost:80/projeto-korp
 ```
 
 Teste:
 
 ```bash
-curl http://localhost
+curl http://localhost:80/projeto-korp
 ```
+
+Resposta esperada:
+
+```json
+{
+  "nome": "Projeto Korp",
+  "horario": "2026-09-03T19:14:40Z"
+}
+```
+
+O campo:
+
+```text
+horario
+```
+
+é calculado dinamicamente a cada requisição utilizando horário UTC.
+
+A aplicação utiliza:
+
+```go
+time.Now().UTC()
+```
+
+com formatação RFC3339.
+
+---
 
 ## Health Check
 
@@ -205,12 +200,12 @@ O endpoint:
 /health
 ```
 
-permite verificar a disponibilidade da aplicação.
+é utilizado para verificar a disponibilidade da aplicação.
 
 Teste:
 
 ```bash
-curl http://localhost/health
+curl http://localhost:80/health
 ```
 
 Resposta esperada:
@@ -219,9 +214,11 @@ Resposta esperada:
 OK
 ```
 
+---
+
 ## Métricas
 
-A aplicação disponibiliza métricas compatíveis com Prometheus através do endpoint:
+A aplicação disponibiliza métricas no padrão Prometheus através do endpoint:
 
 ```text
 /metrics
@@ -230,24 +227,24 @@ A aplicação disponibiliza métricas compatíveis com Prometheus através do en
 Teste:
 
 ```bash
-curl http://localhost/metrics
+curl http://localhost:80/metrics
 ```
 
-Uma das principais métricas utilizadas é:
+A principal métrica customizada é:
 
 ```text
 http_requests_total
 ```
 
-Ela representa o total de requisições HTTP recebidas pela aplicação.
+Ela representa o total de requisições HTTP recebidas.
 
-Para consultar apenas essa métrica:
+Consulta:
 
 ```bash
-curl -s http://localhost/metrics | grep http_requests_total
+curl -s http://localhost:80/metrics | grep http_requests_total
 ```
 
-Resultado esperado semelhante a:
+Resultado semelhante a:
 
 ```text
 # HELP http_requests_total Total de requisições HTTP recebidas
@@ -255,38 +252,172 @@ Resultado esperado semelhante a:
 http_requests_total 2
 ```
 
-O valor pode variar de acordo com a quantidade de requisições realizadas.
+---
+
+## Docker
+
+A aplicação possui um `Dockerfile` responsável pelo build e execução do serviço Go.
+
+O container da aplicação utiliza internamente:
+
+```text
+8080
+```
+
+sem publicar a porta diretamente no host.
+
+---
+
+## Rede Docker
+
+O ambiente utiliza uma rede Docker dedicada:
+
+```text
+korp-network
+```
+
+Tipo:
+
+```text
+bridge
+```
+
+A rede é declarada no `docker-compose.yml`:
+
+```yaml
+networks:
+  korp-network:
+    name: korp-network
+    driver: bridge
+```
+
+Os seguintes serviços utilizam essa rede:
+
+- aplicação Go
+- Nginx
+- Prometheus
+- Grafana
+
+Para consultar a rede:
+
+```bash
+sudo docker network ls
+```
+
+Resultado esperado:
+
+```text
+korp-network    bridge
+```
+
+---
+
+## Docker Compose
+
+O Docker Compose é responsável por executar os serviços:
+
+- `http-server-korp`
+- `nginx-korp`
+- `prometheus-korp`
+- `grafana-korp`
+
+### Subir os serviços
+
+```bash
+sudo docker compose up -d --build
+```
+
+### Visualizar os serviços
+
+```bash
+sudo docker compose ps
+```
+
+### Parar os serviços
+
+```bash
+sudo docker compose down
+```
+
+### Validar configuração
+
+```bash
+sudo docker compose config
+```
+
+---
 
 ## Nginx
 
 O Nginx atua como proxy reverso.
 
-O fluxo de acesso é:
+A configuração está localizada em:
+
+```text
+nginx/conf.d/http-server-projeto-korp.conf
+```
+
+O diretório:
+
+```text
+nginx/conf.d
+```
+
+é montado no container no caminho:
+
+```text
+/etc/nginx/conf.d
+```
+
+Fluxo:
 
 ```text
 Cliente
    |
    v
-Nginx :80
+localhost:80
    |
    v
-Aplicação Go :8080
+Nginx
+   |
+   v
+app:8080
 ```
 
-A configuração está localizada em:
+O Nginx encaminha as requisições para:
 
 ```text
-nginx/conf.d/default.conf
+http://app:8080
 ```
+
+Teste obrigatório do desafio:
+
+```bash
+curl http://localhost:80/projeto-korp
+```
+
+---
 
 ## Prometheus
 
-O Prometheus é responsável por coletar as métricas expostas pela aplicação.
+O Prometheus coleta as métricas expostas pela aplicação.
 
-A interface pode ser acessada em:
+Interface:
 
 ```text
 http://localhost:9090
+```
+
+O alvo configurado é:
+
+```text
+app:8080
+```
+
+Endpoint coletado:
+
+```text
+/metrics
 ```
 
 Exemplo de consulta:
@@ -295,25 +426,41 @@ Exemplo de consulta:
 http_requests_total
 ```
 
-O Prometheus coleta os dados a partir do endpoint:
+Para validar disponibilidade:
+
+```promql
+up{job="http-server-korp"}
+```
+
+Valor esperado:
 
 ```text
-app:8080/metrics
+1
 ```
+
+---
 
 ## Grafana
 
-O Grafana utiliza o Prometheus como fonte de dados para construção dos dashboards.
+O Grafana utiliza o Prometheus como fonte de dados.
 
-A interface pode ser acessada em:
+Interface:
 
 ```text
 http://localhost:3000
 ```
 
+O datasource Prometheus é provisionado automaticamente através de:
+
+```text
+monitoring/grafana/provisioning/datasources/datasource.yml
+```
+
+---
+
 ## Dashboard de Observabilidade
 
-O dashboard desenvolvido contém os seguintes painéis:
+O dashboard desenvolvido possui os seguintes painéis:
 
 - Taxa de Requisições HTTP
 - Total de Requisições HTTP
@@ -323,80 +470,50 @@ O dashboard desenvolvido contém os seguintes painéis:
 
 ### Taxa de Requisições HTTP
 
-Query:
-
 ```promql
 rate(http_requests_total[1m])
 ```
 
-Essa consulta apresenta a taxa de requisições por segundo.
-
 ### Total de Requisições HTTP
-
-Query:
 
 ```promql
 http_requests_total
 ```
 
-Apresenta o total acumulado de requisições.
-
 ### Goroutines Ativas
-
-Query:
 
 ```promql
 go_goroutines
 ```
 
-Apresenta a quantidade de goroutines ativas na aplicação Go.
-
 ### Memória em Uso
-
-Query:
 
 ```promql
 process_resident_memory_bytes
 ```
 
-No Grafana, a unidade utilizada é:
+Unidade utilizada no Grafana:
 
 ```text
 bytes (IEC)
 ```
 
-permitindo visualizar valores como:
-
-```text
-14.0 MiB
-```
-
 ### Status da Aplicação
-
-Query:
 
 ```promql
 up{job="http-server-korp"}
 ```
 
-Foi configurado um Value Mapping no Grafana:
+Value Mapping:
 
 ```text
 1 = UP
 0 = DOWN
 ```
 
-Assim o dashboard apresenta:
+---
 
-```text
-UP
-```
-
-quando o serviço está disponível.
-
-## Ansible
-
-O projeto utiliza Ansible para automatizar o provisionamento básico do ambiente.
+## Automação com Ansible
 
 O playbook está localizado em:
 
@@ -404,75 +521,115 @@ O playbook está localizado em:
 ansible/playbook.yml
 ```
 
-### Validar a sintaxe
+O objetivo é provisionar todo o ambiente utilizando um único comando.
+
+### O playbook realiza
+
+- atualização do cache APT;
+- instalação do Docker;
+- inicialização e habilitação do Docker;
+- validação do Docker Compose;
+- criação da rede Docker bridge;
+- validação da configuração Compose;
+- build da aplicação;
+- execução dos containers;
+- configuração do Nginx;
+- execução do Prometheus;
+- execução do Grafana;
+- validação do endpoint `/projeto-korp`;
+- exibição da resposta JSON no console;
+- validação do endpoint `/health`;
+- validação do Prometheus;
+- validação do Grafana;
+- exibição dos containers em execução.
+
+---
+
+## Provisionamento completo com um único comando
+
+Executar:
+
+```bash
+ansible-playbook ansible/playbook.yml
+```
+
+Caso seja necessário solicitar senha para elevação de privilégio:
+
+```bash
+ansible-playbook ansible/playbook.yml --ask-become-pass
+```
+
+### Validação da sintaxe
 
 ```bash
 ansible-playbook ansible/playbook.yml --syntax-check
 ```
 
-### Executar o playbook
-
-```bash
-sudo ansible-playbook ansible/playbook.yml
-```
-
-### Executar em modo de verificação
-
-```bash
-sudo ansible-playbook ansible/playbook.yml --check
-```
-
-O playbook executa:
-
-- atualização do cache do APT;
-- instalação do Docker;
-- instalação do Docker Compose;
-- inicialização do Docker;
-- habilitação do serviço Docker;
-- inclusão do usuário no grupo Docker.
-
-Uma execução válida deve terminar com:
+Resultado esperado:
 
 ```text
-unreachable=0
-failed=0
+playbook: ansible/playbook.yml
 ```
 
-## Integração Contínua
+---
 
-O projeto utiliza GitHub Actions para validar automaticamente o código.
+## Validação do serviço pelo Ansible
 
-O workflow está localizado em:
+Durante a execução, o playbook realiza:
 
 ```text
-.github/workflows/ci.yml
+GET http://localhost:80/projeto-korp
 ```
 
-A pipeline é executada automaticamente em:
+e exibe no console uma resposta semelhante a:
 
-- push para a branch `main`;
-- pull request para a branch `main`.
+```json
+{
+  "nome": "Projeto Korp",
+  "horario": "2026-09-03T19:14:40Z"
+}
+```
 
-## Validações da Pipeline
-
-O GitHub Actions executa:
-
-- Checkout do código
-- Configuração do Go
-- Validação das dependências
-- Verificação de formatação com `gofmt`
-- Execução dos testes automatizados
-- Compilação da aplicação
-- Validação do Docker Compose
-- Build da imagem Docker
-
-A pipeline pode ser acompanhada através da aba:
+Também é validado:
 
 ```text
-Actions
+http://localhost:80/health
 ```
 
-do repositório no GitHub.
+com resposta:
+
+```text
+OK
+```
+
+---
+
+## Resultado esperado do Ansible
+
+Uma execução bem-sucedida deve terminar com:
+
+```text
+PLAY RECAP
+localhost : ok=... changed=... unreachable=0 failed=0
+```
+
+Exemplo validado durante o desenvolvimento:
+
+```text
+localhost : ok=20 changed=3 unreachable=0 failed=0
+```
+
+O playbook também exibe:
+
+```text
+Ambiente provisionado com sucesso.
+Aplicação: http://localhost:80/projeto-korp
+Health Check: http://localhost:80/health
+Prometheus: http://localhost:9090
+Grafana: http://localhost:3000
+```
+
+---
 
 ## Testes Automatizados
 
@@ -482,13 +639,19 @@ Os testes estão localizados em:
 internal/server/server_test.go
 ```
 
-Atualmente são validados os seguintes endpoints:
+São validados:
 
 - `/`
+- `/projeto-korp`
+- método HTTP permitido no `/projeto-korp`
+- JSON retornado
+- campo `nome`
+- campo `horario`
+- horário UTC
 - `/health`
 - `/metrics`
 
-### Executar os testes
+### Executar
 
 ```bash
 go test ./...
@@ -500,11 +663,17 @@ go test ./...
 go test -v ./...
 ```
 
-Resultado esperado semelhante a:
+Resultado esperado:
 
 ```text
 === RUN   TestRootEndpoint
 --- PASS: TestRootEndpoint
+
+=== RUN   TestProjetoKorpEndpoint
+--- PASS: TestProjetoKorpEndpoint
+
+=== RUN   TestProjetoKorpSomenteGET
+--- PASS: TestProjetoKorpSomenteGET
 
 === RUN   TestHealthEndpoint
 --- PASS: TestHealthEndpoint
@@ -515,257 +684,155 @@ Resultado esperado semelhante a:
 PASS
 ```
 
-## Validação Local
+---
 
-### Formatar código Go
+## GitHub Actions
 
-```bash
-gofmt -w cmd/server/main.go internal/server/server.go internal/server/server_test.go
+O projeto utiliza GitHub Actions para integração contínua.
+
+Workflow:
+
+```text
+.github/workflows/ci.yml
 ```
 
-### Executar testes
+A pipeline executa:
 
-```bash
-go test ./...
-```
+- checkout do código;
+- configuração do Go;
+- validação de dependências;
+- validação de formatação;
+- testes automatizados;
+- compilação;
+- validação do Docker Compose;
+- build da imagem Docker.
 
-### Compilar a aplicação
+A pipeline é executada automaticamente em:
 
-```bash
-go build ./cmd/server
-```
+- push para `main`;
+- pull requests para `main`.
 
-### Validar Docker Compose
+---
 
-```bash
-sudo docker compose config
-```
+## Makefile
 
-### Construir a imagem Docker
+O projeto possui um `Makefile` para facilitar as operações locais.
 
-```bash
-sudo docker build -t http-server-projeto-korp:test .
-```
+### Comandos disponíveis
 
-## Comandos com Make
-
-O projeto possui um `Makefile` para simplificar a execução das principais tarefas de desenvolvimento, validação e operação dos containers.
-
-### Subir os serviços
-
-```bash
+```text
 make up
+make down
+make test
+make build
+make fmt
+make ps
+make logs
+make compose-check
+make docker-build
 ```
 
-Executa:
+### Resumo
+
+| Comando | Finalidade |
+|---|---|
+| `make up` | Build e inicialização dos serviços |
+| `make down` | Parar os serviços |
+| `make test` | Executar testes automatizados |
+| `make build` | Compilar a aplicação Go |
+| `make fmt` | Formatar código |
+| `make ps` | Exibir containers |
+| `make logs` | Acompanhar logs |
+| `make compose-check` | Validar Docker Compose |
+| `make docker-build` | Construir imagem Docker |
+
+---
+
+## Teste de Aceite
+
+### Subir ambiente
 
 ```bash
 sudo docker compose up -d --build
 ```
 
-Esse comando realiza o build das imagens e inicia os serviços em segundo plano.
-
-### Parar os serviços
-
-```bash
-make down
-```
-
-Executa:
-
-```bash
-sudo docker compose down
-```
-
-Esse comando interrompe e remove os containers criados pelo Docker Compose.
-
-### Executar os testes
-
-```bash
-make test
-```
-
-Executa:
-
-```bash
-go test -v ./...
-```
-
-Esse comando executa os testes automatizados dos endpoints da aplicação.
-
-### Compilar a aplicação
-
-```bash
-make build
-```
-
-Executa:
-
-```bash
-go build ./cmd/server
-```
-
-Esse comando compila a aplicação Go.
-
-### Formatar o código
-
-```bash
-make fmt
-```
-
-Executa:
-
-```bash
-gofmt -w cmd/server/main.go internal/server/server.go internal/server/server_test.go
-```
-
-Esse comando aplica a formatação padrão do Go aos arquivos principais do projeto.
-
-### Visualizar os containers
-
-```bash
-make ps
-```
-
-Executa:
+### Validar containers
 
 ```bash
 sudo docker compose ps
 ```
 
-Esse comando exibe o status dos containers da aplicação, Nginx, Prometheus e Grafana.
-
-### Visualizar os logs
+### Validar endpoint obrigatório
 
 ```bash
-make logs
+curl http://localhost:80/projeto-korp
 ```
 
-Executa:
+### Validar health check
 
 ```bash
-sudo docker compose logs -f
+curl http://localhost:80/health
 ```
 
-Esse comando acompanha os logs dos serviços em tempo real.
-
-Para sair da visualização dos logs sem parar os containers:
-
-```text
-Ctrl + C
-```
-
-### Validar o Docker Compose
+### Validar métricas
 
 ```bash
-make compose-check
+curl -s http://localhost:80/metrics | grep http_requests_total
 ```
 
-Executa:
+### Executar testes
+
+```bash
+go test -v ./...
+```
+
+### Validar Compose
 
 ```bash
 sudo docker compose config
 ```
 
-Esse comando valida e exibe a configuração final do `docker-compose.yml`.
-
-### Construir a imagem Docker
+### Executar provisionamento Ansible
 
 ```bash
-make docker-build
+ansible-playbook ansible/playbook.yml
 ```
 
-Executa:
-
-```bash
-sudo docker build -t http-server-projeto-korp:test .
-```
-
-Esse comando constrói a imagem Docker da aplicação para validação local.
-
-### Resumo dos comandos
-
-| Comando | Finalidade |
-|---|---|
-| `make up` | Build e inicialização dos serviços |
-| `make down` | Parar e remover os serviços |
-| `make test` | Executar testes automatizados |
-| `make build` | Compilar a aplicação Go |
-| `make fmt` | Formatar o código Go |
-| `make ps` | Visualizar os containers |
-| `make logs` | Acompanhar os logs |
-| `make compose-check` | Validar o Docker Compose |
-| `make docker-build` | Construir a imagem Docker |
-
-## Testes Manuais
-
-### Aplicação
-
-```bash
-curl http://localhost
-```
-
-Resultado esperado:
-
-```text
-HTTP Server Projeto Korp funcionando!
-```
-
-### Health Check
-
-```bash
-curl http://localhost/health
-```
-
-Resultado esperado:
-
-```text
-OK
-```
-
-### Métricas
-
-```bash
-curl -s http://localhost/metrics | grep http_requests_total
-```
-
-Resultado esperado semelhante a:
-
-```text
-# HELP http_requests_total Total de requisições HTTP recebidas
-# TYPE http_requests_total counter
-http_requests_total 2
-```
+---
 
 ## Evidências
 
 ### Dashboard Grafana
 
-Dashboard de observabilidade da aplicação com métricas de requisições, goroutines, memória e disponibilidade.
+Dashboard de observabilidade contendo métricas de requisições, goroutines, memória e disponibilidade.
 
 ![Dashboard Grafana](docs/images/grafana-dashboard.png)
 
 ### Prometheus
 
-Consulta da métrica customizada `http_requests_total` coletada da aplicação Go.
+Consulta da métrica:
+
+```text
+http_requests_total
+```
 
 ![Consulta Prometheus](docs/images/prometheus-query.png)
 
 ### GitHub Actions
 
-Pipeline de integração contínua executada com sucesso no GitHub Actions.
+Pipeline de integração contínua executada com sucesso.
 
 ![GitHub Actions](docs/images/github-actions-success.png)
 
 ### Docker Compose
 
-Containers da aplicação, Nginx, Prometheus e Grafana em execução.
+Containers do ambiente em execução.
 
 ![Docker Compose](docs/images/docker-compose-ps.png)
 
 ### Ansible
 
-Execução do playbook Ansible validada com:
+Execução do playbook concluída com:
 
 ```text
 unreachable=0
@@ -774,14 +841,21 @@ failed=0
 
 ![Ansible](docs/images/ansible-success.png)
 
+---
+
 ## Status do Projeto
 
-Os principais componentes foram implementados e validados:
+Componentes implementados e validados:
 
 - Aplicação Go
+- Endpoint `/projeto-korp`
+- JSON dinâmico
+- Horário UTC
 - Docker
 - Docker Compose
+- Rede bridge `korp-network`
 - Nginx
+- Proxy reverso
 - Prometheus
 - Grafana
 - Dashboard de observabilidade
@@ -789,8 +863,25 @@ Os principais componentes foram implementados e validados:
 - Métricas HTTP
 - Testes automatizados
 - Ansible
+- Provisionamento completo por Ansible
 - GitHub Actions
 - Makefile
+- Documentação
+- Evidências
+
+---
+
+## Release
+
+Versão estável inicial:
+
+```text
+v1.0.0
+```
+
+Após os ajustes finais de aderência ao desafio, será disponibilizada uma nova versão corrigida.
+
+---
 
 ## Autor
 
