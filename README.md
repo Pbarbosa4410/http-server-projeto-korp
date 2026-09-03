@@ -52,6 +52,7 @@ Aplicação Go
 - Git
 - GitHub
 - GitHub Actions
+- Make
 
 ## Funcionalidades
 
@@ -65,6 +66,8 @@ Aplicação Go
 - Provisionamento automatizado com Ansible
 - Execução dos serviços com Docker Compose
 - Pipeline de integração contínua com GitHub Actions
+- Testes automatizados dos endpoints
+- Automação de comandos com Makefile
 
 ## Estrutura do Projeto
 
@@ -87,7 +90,8 @@ http-server-projeto-korp/
 │       └── prometheus-query.png
 ├── internal/
 │   └── server/
-│       └── server.go
+│       ├── server.go
+│       └── server_test.go
 ├── monitoring/
 │   ├── grafana/
 │   │   └── provisioning/
@@ -105,6 +109,7 @@ http-server-projeto-korp/
 ├── docker-compose.yml
 ├── go.mod
 ├── go.sum
+├── Makefile
 └── README.md
 ```
 
@@ -456,7 +461,7 @@ O GitHub Actions executa:
 - Configuração do Go
 - Validação das dependências
 - Verificação de formatação com `gofmt`
-- Execução de testes com `go test`
+- Execução dos testes automatizados
 - Compilação da aplicação
 - Validação do Docker Compose
 - Build da imagem Docker
@@ -469,12 +474,53 @@ Actions
 
 do repositório no GitHub.
 
+## Testes Automatizados
+
+Os testes estão localizados em:
+
+```text
+internal/server/server_test.go
+```
+
+Atualmente são validados os seguintes endpoints:
+
+- `/`
+- `/health`
+- `/metrics`
+
+### Executar os testes
+
+```bash
+go test ./...
+```
+
+### Executar em modo detalhado
+
+```bash
+go test -v ./...
+```
+
+Resultado esperado semelhante a:
+
+```text
+=== RUN   TestRootEndpoint
+--- PASS: TestRootEndpoint
+
+=== RUN   TestHealthEndpoint
+--- PASS: TestHealthEndpoint
+
+=== RUN   TestMetricsEndpoint
+--- PASS: TestMetricsEndpoint
+
+PASS
+```
+
 ## Validação Local
 
 ### Formatar código Go
 
 ```bash
-gofmt -w cmd/server/main.go internal/server/server.go
+gofmt -w cmd/server/main.go internal/server/server.go internal/server/server_test.go
 ```
 
 ### Executar testes
@@ -492,14 +538,164 @@ go build ./cmd/server
 ### Validar Docker Compose
 
 ```bash
-docker compose config
+sudo docker compose config
 ```
 
 ### Construir a imagem Docker
 
 ```bash
-docker build -t http-server-projeto-korp:test .
+sudo docker build -t http-server-projeto-korp:test .
 ```
+
+## Comandos com Make
+
+O projeto possui um `Makefile` para simplificar a execução das principais tarefas de desenvolvimento, validação e operação dos containers.
+
+### Subir os serviços
+
+```bash
+make up
+```
+
+Executa:
+
+```bash
+sudo docker compose up -d --build
+```
+
+Esse comando realiza o build das imagens e inicia os serviços em segundo plano.
+
+### Parar os serviços
+
+```bash
+make down
+```
+
+Executa:
+
+```bash
+sudo docker compose down
+```
+
+Esse comando interrompe e remove os containers criados pelo Docker Compose.
+
+### Executar os testes
+
+```bash
+make test
+```
+
+Executa:
+
+```bash
+go test -v ./...
+```
+
+Esse comando executa os testes automatizados dos endpoints da aplicação.
+
+### Compilar a aplicação
+
+```bash
+make build
+```
+
+Executa:
+
+```bash
+go build ./cmd/server
+```
+
+Esse comando compila a aplicação Go.
+
+### Formatar o código
+
+```bash
+make fmt
+```
+
+Executa:
+
+```bash
+gofmt -w cmd/server/main.go internal/server/server.go internal/server/server_test.go
+```
+
+Esse comando aplica a formatação padrão do Go aos arquivos principais do projeto.
+
+### Visualizar os containers
+
+```bash
+make ps
+```
+
+Executa:
+
+```bash
+sudo docker compose ps
+```
+
+Esse comando exibe o status dos containers da aplicação, Nginx, Prometheus e Grafana.
+
+### Visualizar os logs
+
+```bash
+make logs
+```
+
+Executa:
+
+```bash
+sudo docker compose logs -f
+```
+
+Esse comando acompanha os logs dos serviços em tempo real.
+
+Para sair da visualização dos logs sem parar os containers:
+
+```text
+Ctrl + C
+```
+
+### Validar o Docker Compose
+
+```bash
+make compose-check
+```
+
+Executa:
+
+```bash
+sudo docker compose config
+```
+
+Esse comando valida e exibe a configuração final do `docker-compose.yml`.
+
+### Construir a imagem Docker
+
+```bash
+make docker-build
+```
+
+Executa:
+
+```bash
+sudo docker build -t http-server-projeto-korp:test .
+```
+
+Esse comando constrói a imagem Docker da aplicação para validação local.
+
+### Resumo dos comandos
+
+| Comando | Finalidade |
+|---|---|
+| `make up` | Build e inicialização dos serviços |
+| `make down` | Parar e remover os serviços |
+| `make test` | Executar testes automatizados |
+| `make build` | Compilar a aplicação Go |
+| `make fmt` | Formatar o código Go |
+| `make ps` | Visualizar os containers |
+| `make logs` | Acompanhar os logs |
+| `make compose-check` | Validar o Docker Compose |
+| `make docker-build` | Construir a imagem Docker |
 
 ## Testes Manuais
 
@@ -591,8 +787,10 @@ Os principais componentes foram implementados e validados:
 - Dashboard de observabilidade
 - Health Check
 - Métricas HTTP
+- Testes automatizados
 - Ansible
 - GitHub Actions
+- Makefile
 
 ## Autor
 
