@@ -73,7 +73,9 @@ Aplicação Go :8080
 - Rede Docker bridge dedicada
 - Monitoramento com Prometheus
 - Dashboard com Grafana
-- Provisionamento automatizado com Ansible
+- Provisionamento automático do datasource do Grafana
+- Provisionamento automático do dashboard do Grafana
+- Provisionamento completo com Ansible
 - Execução dos serviços com Docker Compose
 - Pipeline de integração contínua com GitHub Actions
 - Testes automatizados
@@ -106,6 +108,8 @@ http-server-projeto-korp/
 │       └── server_test.go
 ├── monitoring/
 │   ├── grafana/
+│   │   ├── dashboards/
+│   │   │   └── http-server-projeto-korp-dashboard.json
 │   │   └── provisioning/
 │   │       ├── dashboards/
 │   │       │   └── dashboard.yml
@@ -147,7 +151,7 @@ O acesso externo ocorre através do Nginx na porta:
 
 ## Endpoint obrigatório
 
-O desafio exige o endpoint:
+O endpoint principal exigido pelo desafio é:
 
 ```text
 GET /projeto-korp
@@ -174,13 +178,7 @@ Resposta esperada:
 }
 ```
 
-O campo:
-
-```text
-horario
-```
-
-é calculado dinamicamente a cada requisição utilizando horário UTC.
+O campo `horario` é calculado dinamicamente a cada requisição utilizando horário UTC.
 
 A aplicação utiliza:
 
@@ -298,7 +296,7 @@ Os seguintes serviços utilizam essa rede:
 - Prometheus
 - Grafana
 
-Para consultar a rede:
+Para consultar:
 
 ```bash
 sudo docker network ls
@@ -314,7 +312,7 @@ korp-network    bridge
 
 ## Docker Compose
 
-O Docker Compose é responsável por executar os serviços:
+O Docker Compose executa:
 
 - `http-server-korp`
 - `nginx-korp`
@@ -351,7 +349,7 @@ sudo docker compose config
 
 O Nginx atua como proxy reverso.
 
-A configuração está localizada em:
+Configuração:
 
 ```text
 nginx/conf.d/http-server-projeto-korp.conf
@@ -363,7 +361,7 @@ O diretório:
 nginx/conf.d
 ```
 
-é montado no container no caminho:
+é montado no container em:
 
 ```text
 /etc/nginx/conf.d
@@ -390,7 +388,7 @@ O Nginx encaminha as requisições para:
 http://app:8080
 ```
 
-Teste obrigatório do desafio:
+Teste obrigatório:
 
 ```bash
 curl http://localhost:80/projeto-korp
@@ -420,13 +418,13 @@ Endpoint coletado:
 /metrics
 ```
 
-Exemplo de consulta:
+Consulta de volume de requisições:
 
 ```promql
 http_requests_total
 ```
 
-Para validar disponibilidade:
+Consulta de disponibilidade:
 
 ```promql
 up{job="http-server-korp"}
@@ -450,17 +448,74 @@ Interface:
 http://localhost:3000
 ```
 
-O datasource Prometheus é provisionado automaticamente através de:
+O projeto utiliza provisionamento automático tanto do datasource quanto do dashboard.
+
+Isso significa que não é necessário criar manualmente os painéis após recriar o container do Grafana.
+
+---
+
+## Provisionamento automático do datasource
+
+Arquivo:
 
 ```text
 monitoring/grafana/provisioning/datasources/datasource.yml
+```
+
+O datasource é configurado automaticamente para utilizar:
+
+```text
+http://prometheus:9090
+```
+
+com UID:
+
+```text
+prometheus
+```
+
+---
+
+## Provisionamento automático do dashboard
+
+O provider de dashboards está localizado em:
+
+```text
+monitoring/grafana/provisioning/dashboards/dashboard.yml
+```
+
+Ele instrui o Grafana a carregar arquivos JSON do diretório:
+
+```text
+/var/lib/grafana/dashboards
+```
+
+Esse diretório é montado pelo Docker Compose a partir de:
+
+```text
+monitoring/grafana/dashboards
+```
+
+O dashboard versionado está em:
+
+```text
+monitoring/grafana/dashboards/http-server-projeto-korp-dashboard.json
+```
+
+Quando o container do Grafana é criado, o dashboard é carregado automaticamente.
+
+No Grafana, ele aparece em:
+
+```text
+Projeto Korp
+└── HTTP Server Projeto Korp
 ```
 
 ---
 
 ## Dashboard de Observabilidade
 
-O dashboard desenvolvido possui os seguintes painéis:
+O dashboard provisionado automaticamente possui os seguintes painéis:
 
 - Taxa de Requisições HTTP
 - Total de Requisições HTTP
@@ -492,7 +547,7 @@ go_goroutines
 process_resident_memory_bytes
 ```
 
-Unidade utilizada no Grafana:
+Unidade:
 
 ```text
 bytes (IEC)
@@ -521,7 +576,7 @@ O playbook está localizado em:
 ansible/playbook.yml
 ```
 
-O objetivo é provisionar todo o ambiente utilizando um único comando.
+O ambiente pode ser provisionado com um único comando.
 
 ### O playbook realiza
 
@@ -536,6 +591,8 @@ O objetivo é provisionar todo o ambiente utilizando um único comando.
 - configuração do Nginx;
 - execução do Prometheus;
 - execução do Grafana;
+- carregamento automático do datasource do Grafana;
+- carregamento automático do dashboard do Grafana;
 - validação do endpoint `/projeto-korp`;
 - exibição da resposta JSON no console;
 - validação do endpoint `/health`;
@@ -553,7 +610,7 @@ Executar:
 ansible-playbook ansible/playbook.yml
 ```
 
-Caso seja necessário solicitar senha para elevação de privilégio:
+Caso seja necessária elevação de privilégio:
 
 ```bash
 ansible-playbook ansible/playbook.yml --ask-become-pass
@@ -581,7 +638,7 @@ Durante a execução, o playbook realiza:
 GET http://localhost:80/projeto-korp
 ```
 
-e exibe no console uma resposta semelhante a:
+e exibe uma resposta semelhante a:
 
 ```json
 {
@@ -596,7 +653,7 @@ Também é validado:
 http://localhost:80/health
 ```
 
-com resposta:
+Resposta:
 
 ```text
 OK
@@ -613,20 +670,10 @@ PLAY RECAP
 localhost : ok=... changed=... unreachable=0 failed=0
 ```
 
-Exemplo validado durante o desenvolvimento:
+Exemplo validado:
 
 ```text
 localhost : ok=20 changed=3 unreachable=0 failed=0
-```
-
-O playbook também exibe:
-
-```text
-Ambiente provisionado com sucesso.
-Aplicação: http://localhost:80/projeto-korp
-Health Check: http://localhost:80/health
-Prometheus: http://localhost:9090
-Grafana: http://localhost:3000
 ```
 
 ---
@@ -643,7 +690,7 @@ São validados:
 
 - `/`
 - `/projeto-korp`
-- método HTTP permitido no `/projeto-korp`
+- método HTTP permitido
 - JSON retornado
 - campo `nome`
 - campo `horario`
@@ -707,7 +754,7 @@ A pipeline executa:
 - validação do Docker Compose;
 - build da imagem Docker.
 
-A pipeline é executada automaticamente em:
+Executada automaticamente em:
 
 - push para `main`;
 - pull requests para `main`.
@@ -716,9 +763,9 @@ A pipeline é executada automaticamente em:
 
 ## Makefile
 
-O projeto possui um `Makefile` para facilitar as operações locais.
+O projeto possui um `Makefile`.
 
-### Comandos disponíveis
+Comandos disponíveis:
 
 ```text
 make up
@@ -732,18 +779,16 @@ make compose-check
 make docker-build
 ```
 
-### Resumo
-
 | Comando | Finalidade |
 |---|---|
 | `make up` | Build e inicialização dos serviços |
 | `make down` | Parar os serviços |
 | `make test` | Executar testes automatizados |
-| `make build` | Compilar a aplicação Go |
+| `make build` | Compilar aplicação |
 | `make fmt` | Formatar código |
 | `make ps` | Exibir containers |
 | `make logs` | Acompanhar logs |
-| `make compose-check` | Validar Docker Compose |
+| `make compose-check` | Validar Compose |
 | `make docker-build` | Construir imagem Docker |
 
 ---
@@ -792,7 +837,13 @@ go test -v ./...
 sudo docker compose config
 ```
 
-### Executar provisionamento Ansible
+### Validar sintaxe Ansible
+
+```bash
+ansible-playbook ansible/playbook.yml --syntax-check
+```
+
+### Provisionar ambiente
 
 ```bash
 ansible-playbook ansible/playbook.yml
@@ -804,7 +855,7 @@ ansible-playbook ansible/playbook.yml
 
 ### Dashboard Grafana
 
-Dashboard de observabilidade contendo métricas de requisições, goroutines, memória e disponibilidade.
+Dashboard provisionado automaticamente com métricas de requisições, goroutines, memória e disponibilidade.
 
 ![Dashboard Grafana](docs/images/grafana-dashboard.png)
 
@@ -820,7 +871,7 @@ http_requests_total
 
 ### GitHub Actions
 
-Pipeline de integração contínua executada com sucesso.
+Pipeline executada com sucesso.
 
 ![GitHub Actions](docs/images/github-actions-success.png)
 
@@ -832,7 +883,7 @@ Containers do ambiente em execução.
 
 ### Ansible
 
-Execução do playbook concluída com:
+Execução concluída com:
 
 ```text
 unreachable=0
@@ -840,6 +891,27 @@ failed=0
 ```
 
 ![Ansible](docs/images/ansible-success.png)
+
+---
+
+## Diferenciais implementados
+
+Além dos requisitos mínimos do desafio, foram implementados:
+
+- GitHub Actions
+- testes automatizados
+- health check dedicado
+- métricas adicionais de runtime Go
+- Makefile
+- documentação detalhada
+- diagrama Mermaid
+- badge de CI
+- evidências técnicas
+- rede Docker explícita
+- provisionamento completo com Ansible
+- datasource Grafana provisionado automaticamente
+- dashboard Grafana provisionado automaticamente
+- dashboard versionado em JSON
 
 ---
 
@@ -858,7 +930,8 @@ Componentes implementados e validados:
 - Proxy reverso
 - Prometheus
 - Grafana
-- Dashboard de observabilidade
+- Datasource automatizado
+- Dashboard automatizado
 - Health Check
 - Métricas HTTP
 - Testes automatizados
@@ -871,15 +944,16 @@ Componentes implementados e validados:
 
 ---
 
-## Release
+## Releases
 
-Versão estável inicial:
+Versões publicadas:
 
 ```text
 v1.0.0
+v1.0.1
 ```
 
-Após os ajustes finais de aderência ao desafio, será disponibilizada uma nova versão corrigida.
+A próxima versão incluirá o provisionamento automático completo do Grafana.
 
 ---
 
