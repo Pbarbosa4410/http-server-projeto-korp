@@ -1,0 +1,25 @@
+# Binários Go
+/server
+*.exe
+*.out
+
+# Variáveis de ambiente
+.env
+.env.*
+
+# VS Code
+.vscode/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporários
+tmp/
+temp/
+
+# Ansible
+*.retry

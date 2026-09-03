@@ -1,0 +1,29 @@
+---
+- name: Provisionar ambiente do HTTP Server Korp
+  hosts: localhost
+  become: true
+  connection: local
+
+  tasks:
+    - name: Atualizar cache do apt
+      apt:
+        update_cache: true
+
+    - name: Instalar Docker
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    - name: Garantir que o Docker esteja iniciado
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Adicionar usuário atual ao grupo docker
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: true
